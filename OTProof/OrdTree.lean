@@ -7,6 +7,7 @@ dfs-preorder-lca-characterization-v0.1.md.
 -/
 import Mathlib.Data.List.Basic
 import Mathlib.Data.List.Nodup
+import Mathlib.Data.List.Pairwise
 import Mathlib.Order.RelClasses
 
 namespace OTProof
@@ -66,7 +67,7 @@ theorem mem_def {x : α} {t : OrdTree α} :
 
 @[simp] theorem mem_node_iff {x a : α} {cs : List (OrdTree α)} :
     x ∈ (node a cs : OrdTree α) ↔ x = a ∨ ∃ c ∈ cs, x ∈ c := by
-  sorry
+  simp only [mem_def, toList_node, List.mem_cons, List.mem_flatMap]
 
 theorem mem_root (a : α) (cs : List (OrdTree α)) :
     a ∈ (node a cs : OrdTree α) := by
@@ -98,31 +99,136 @@ inductive IsAncestorIn (x y : α) : OrdTree α → Prop where
 def IsProperAncestorIn (x y : α) (t : OrdTree α) : Prop :=
   IsAncestorIn x y t ∧ x ≠ y
 
+/-! ### Helper lemmas -/
+
+/-- If x is an ancestor of y in t, then y ∈ t. -/
+theorem isAncestorIn_mem_right {x y : α} {t : OrdTree α}
+    (h : IsAncestorIn x y t) : y ∈ t := by
+  induction h with
+  | root cs hy => exact hy
+  | descend a cs c hc _ ih => exact mem_child hc ih
+
+/-- If x is an ancestor of y in t, then x ∈ t. -/
+theorem isAncestorIn_mem_left {x y : α} {t : OrdTree α}
+    (h : IsAncestorIn x y t) : x ∈ t := by
+  induction h with
+  | root cs _ => exact mem_root x cs
+  | descend a cs c hc _ ih => exact mem_child hc ih
+
+/-- Distinct is inherited by children. -/
+theorem distinct_of_child {a : α} {cs : List (OrdTree α)} {c : OrdTree α}
+    (hd : (node a cs).Distinct) (hc : c ∈ cs) : c.Distinct := by
+  unfold Distinct at hd ⊢
+  rw [toList_node] at hd
+  exact (List.nodup_flatMap.mp (List.nodup_cons.mp hd).2).1 c hc
+
+/-- The root label is not in any child's toList. -/
+theorem root_not_mem_child {a : α} {cs : List (OrdTree α)} {c : OrdTree α}
+    (hd : (node a cs).Distinct) (hc : c ∈ cs) : a ∉ c := by
+  unfold Distinct at hd
+  rw [toList_node] at hd
+  intro ha
+  exact (List.nodup_cons.mp hd).1 (List.mem_flatMap.mpr ⟨c, hc, ha⟩)
+
+/-- In a distinct tree, an element can be in at most one child. -/
+theorem mem_unique_child {y a : α} {cs : List (OrdTree α)}
+    {c₁ c₂ : OrdTree α}
+    (hd : (node a cs).Distinct)
+    (hc₁ : c₁ ∈ cs) (hc₂ : c₂ ∈ cs)
+    (hy₁ : y ∈ c₁) (hy₂ : y ∈ c₂) : c₁ = c₂ := by
+  by_contra hne
+  unfold Distinct at hd
+  rw [toList_node] at hd
+  have hfm_nd := (List.nodup_cons.mp hd).2
+  have ⟨_, hpw⟩ := List.nodup_flatMap.mp hfm_nd
+  exact (hpw.forall (fun ⦃_ _⦄ => List.disjoint_symm) hc₁ hc₂ hne) hy₁ hy₂
+
+/-- If a' is ancestor of x in (node r cs) and a' ≠ r, then a' is ancestor
+    of x in some child c ∈ cs. -/
+theorem isAncestorIn_in_child {a' x r : α} {cs : List (OrdTree α)}
+    (h : IsAncestorIn a' x (node r cs)) (hne : a' ≠ r) :
+    ∃ c ∈ cs, IsAncestorIn a' x c := by
+  cases h with
+  | root _ _ => exact absurd rfl hne
+  | descend _ _ c hc h' => exact ⟨c, hc, h'⟩
+
 /-! ### Ancestor properties (A1, A2, A3) -/
 
 /-- A1 (reflexivity part): x is an ancestor of itself if x ∈ t. -/
 theorem isAncestorIn_refl {x : α} {t : OrdTree α} (hx : x ∈ t) :
     IsAncestorIn x x t := by
-  sorry
+  match t, hx with
+  | node a cs, hx =>
+    simp only [mem_node_iff] at hx
+    rcases hx with rfl | ⟨c, hc, hxc⟩
+    · exact IsAncestorIn.root cs (mem_root x cs)
+    · exact IsAncestorIn.descend a cs c hc (isAncestorIn_refl hxc)
+termination_by t
 
 /-- A2: The root is an ancestor of every node. -/
 theorem root_isAncestorIn {t : OrdTree α} {y : α} (hy : y ∈ t) :
     IsAncestorIn t.label y t := by
-  sorry
+  cases t with
+  | node a cs => exact IsAncestorIn.root cs hy
 
 /-- A1 (transitivity): Ancestor relation is transitive. -/
 theorem isAncestorIn_trans {x y z : α} {t : OrdTree α}
     (hd : t.Distinct)
     (hxy : IsAncestorIn x y t) (hyz : IsAncestorIn y z t) :
     IsAncestorIn x z t := by
-  sorry
+  induction hxy with
+  | root cs _ =>
+    exact .root cs (isAncestorIn_mem_right hyz)
+  | descend r cs c hc hxy' ih =>
+    cases hyz with
+    | root _ _ =>
+      exact absurd (isAncestorIn_mem_right hxy') (root_not_mem_child hd hc)
+    | descend _ _ c' hc' hyz' =>
+      have heq := mem_unique_child hd hc hc'
+        (isAncestorIn_mem_right hxy') (isAncestorIn_mem_left hyz')
+      subst heq
+      exact .descend r cs c hc (ih (distinct_of_child hd hc) hyz')
 
 /-- A3: The ancestors of any node form a chain (total order). -/
 theorem ancestors_chain {x a b : α} {t : OrdTree α}
     (hd : t.Distinct)
     (ha : IsAncestorIn a x t) (hb : IsAncestorIn b x t) :
     IsAncestorIn a b t ∨ IsAncestorIn b a t := by
-  sorry
+  induction ha with
+  | root cs _ =>
+    left; exact .root cs (isAncestorIn_mem_left hb)
+  | descend r cs ca hca ha' ih =>
+    cases hb with
+    | root _ _ =>
+      right; exact .root cs (mem_child hca (isAncestorIn_mem_left ha'))
+    | descend _ _ cb hcb hb' =>
+      have heq := mem_unique_child hd hca hcb
+        (isAncestorIn_mem_right ha') (isAncestorIn_mem_right hb')
+      subst heq
+      rcases ih (distinct_of_child hd hca) hb' with h | h
+      · left; exact .descend r cs ca hca h
+      · right; exact .descend r cs ca hca h
+
+/-- Antisymmetry: mutual ancestors must be equal (in a distinct tree). -/
+theorem isAncestorIn_antisymm {a b : α} {t : OrdTree α}
+    (hd : t.Distinct)
+    (hab : IsAncestorIn a b t) (hba : IsAncestorIn b a t) :
+    a = b := by
+  induction hab with
+  | root cs _ =>
+    cases hba with
+    | root _ _ => rfl
+    | descend _ _ c hc hba' =>
+      exact absurd (isAncestorIn_mem_right hba') (root_not_mem_child hd hc)
+  | descend r cs c hc hab' ih =>
+    cases hba with
+    | root _ _ =>
+      exact absurd (isAncestorIn_mem_right hab') (root_not_mem_child hd hc)
+    | descend _ _ c' hc' hba' =>
+      have heq := mem_unique_child hd hc hc'
+        (isAncestorIn_mem_left hab') (isAncestorIn_mem_right hba')
+      subst heq
+      exact ih (distinct_of_child hd hc) hba'
 
 /-! ## LCA (Lowest Common Ancestor) -/
 
@@ -135,14 +241,60 @@ def IsLCA (a x y : α) (t : OrdTree α) : Prop :=
 theorem lca_exists {x y : α} {t : OrdTree α}
     (hd : t.Distinct) (hx : x ∈ t) (hy : y ∈ t) :
     ∃ a, IsLCA a x y t := by
-  sorry
+  match t, hd, hx, hy with
+  | node r cs, hd, hx, hy =>
+    rw [mem_node_iff] at hx
+    rcases hx with rfl | ⟨cx, hcx, hx'⟩
+    · -- x = r: rfl eliminates r, x stays; hy unchanged
+      exact ⟨x, isAncestorIn_refl (mem_root x cs), .root cs hy,
+        fun _ ha' _ => ha'⟩
+    · rw [mem_node_iff] at hy
+      rcases hy with rfl | ⟨cy, hcy, hy'⟩
+      · -- y = r: rfl eliminates r, y stays
+        exact ⟨y, .root cs (mem_child hcx hx'), isAncestorIn_refl (mem_root y cs),
+          fun _ _ ha' => ha'⟩
+      · -- Both x, y in children; r still in scope
+        by_cases heq : cx = cy
+        · -- Same child: convert hy' using heq, keep cx
+          have hy'_cx : y ∈ cx := heq ▸ hy'
+          have ⟨a, hlca⟩ := lca_exists (distinct_of_child hd hcx) hx' hy'_cx
+          refine ⟨a,
+            .descend r cs cx hcx hlca.1,
+            .descend r cs cx hcx hlca.2.1,
+            fun a' ha'x ha'y => ?_⟩
+          by_cases ha'r : a' = r
+          · rw [ha'r]
+            exact .root cs (mem_child hcx (isAncestorIn_mem_left hlca.1))
+          · obtain ⟨c₁, hc₁, ha'x'⟩ := isAncestorIn_in_child ha'x ha'r
+            obtain ⟨c₂, hc₂, ha'y'⟩ := isAncestorIn_in_child ha'y ha'r
+            rw [mem_unique_child hd hc₁ hcx
+              (isAncestorIn_mem_right ha'x') hx'] at ha'x'
+            rw [mem_unique_child hd hc₂ hcx
+              (isAncestorIn_mem_right ha'y') hy'_cx] at ha'y'
+            exact .descend r cs cx hcx (hlca.2.2 a' ha'x' ha'y')
+        · -- Different children: LCA is root
+          refine ⟨r, .root cs (mem_child hcx hx'), .root cs (mem_child hcy hy'),
+            fun a' ha'x ha'y => ?_⟩
+          by_cases ha'r : a' = r
+          · rw [ha'r]; exact isAncestorIn_refl (mem_root r cs)
+          · obtain ⟨c₁, hc₁, ha'x'⟩ := isAncestorIn_in_child ha'x ha'r
+            obtain ⟨c₂, hc₂, ha'y'⟩ := isAncestorIn_in_child ha'y ha'r
+            rw [mem_unique_child hd hc₁ hcx
+              (isAncestorIn_mem_right ha'x') hx'] at ha'x'
+            rw [mem_unique_child hd hc₂ hcy
+              (isAncestorIn_mem_right ha'y') hy'] at ha'y'
+            exact absurd (mem_unique_child hd hcx hcy
+              (isAncestorIn_mem_left ha'x') (isAncestorIn_mem_left ha'y')) heq
+termination_by t
 
 /-- LCA is unique in a tree with distinct labels. -/
 theorem lca_unique {a₁ a₂ x y : α} {t : OrdTree α}
     (hd : t.Distinct)
     (h₁ : IsLCA a₁ x y t) (h₂ : IsLCA a₂ x y t) :
-    a₁ = a₂ := by
-  sorry
+    a₁ = a₂ :=
+  isAncestorIn_antisymm hd
+    (h₂.2.2 a₁ h₁.1 h₁.2.1)
+    (h₁.2.2 a₂ h₂.1 h₂.2.1)
 
 /-! ## child_toward -/
 
@@ -155,19 +307,63 @@ inductive IsChildToward (c a x : α) : OrdTree α → Prop where
   | descend : (b : α) → (cs : List (OrdTree α)) → (sub : OrdTree α) →
       sub ∈ cs → IsChildToward c a x sub → IsChildToward c a x (node b cs)
 
+/-- IsChildToward implies the ancestor label is in the tree. -/
+theorem isChildToward_mem_ancestor {c a x : α} {t : OrdTree α}
+    (h : IsChildToward c a x t) : a ∈ t := by
+  induction h with
+  | here cs _ => exact mem_root a cs
+  | descend b cs sub hsub _ ih => exact mem_child hsub ih
+
+/-- IsChildToward implies the target is in the tree. -/
+theorem isChildToward_mem_target {c a x : α} {t : OrdTree α}
+    (h : IsChildToward c a x t) : x ∈ t := by
+  induction h with
+  | here cs hex =>
+    obtain ⟨child, hchild, _, hx_in⟩ := hex
+    exact mem_child hchild hx_in
+  | descend b cs sub hsub _ ih => exact mem_child hsub ih
+
 /-- child_toward existence: if a is a proper ancestor of x, there is a unique
     child of a toward x. -/
 theorem childToward_exists {a x : α} {t : OrdTree α}
     (hd : t.Distinct) (h : IsProperAncestorIn a x t) :
     ∃ c, IsChildToward c a x t := by
-  sorry
+  obtain ⟨hanc, hne⟩ := h
+  induction hanc with
+  | root cs hx =>
+    rw [mem_node_iff] at hx
+    rcases hx with rfl | ⟨child, hchild, hx_in⟩
+    · exact absurd rfl hne
+    · exact ⟨child.label, .here cs ⟨child, hchild, rfl, hx_in⟩⟩
+  | descend r cs c hc _ ih =>
+    have ⟨c', hct⟩ := ih (distinct_of_child hd hc)
+    exact ⟨c', .descend r cs c hc hct⟩
 
 /-- child_toward uniqueness. -/
 theorem childToward_unique {c₁ c₂ a x : α} {t : OrdTree α}
     (hd : t.Distinct)
     (h₁ : IsChildToward c₁ a x t) (h₂ : IsChildToward c₂ a x t) :
     c₁ = c₂ := by
-  sorry
+  induction h₁ with
+  | here cs hex₁ =>
+    cases h₂ with
+    | here _ hex₂ =>
+      obtain ⟨child₁, hc₁, hlbl₁, hx₁⟩ := hex₁
+      obtain ⟨child₂, hc₂, hlbl₂, hx₂⟩ := hex₂
+      have := mem_unique_child hd hc₁ hc₂ hx₁ hx₂
+      rw [← hlbl₁, ← hlbl₂, this]
+    | descend _ _ sub hsub h₂' =>
+      exact absurd (isChildToward_mem_ancestor h₂') (root_not_mem_child hd hsub)
+  | descend b cs sub hsub _ ih =>
+    cases h₂ with
+    | here _ _ =>
+      exact absurd (isChildToward_mem_ancestor ‹IsChildToward c₁ a x sub›)
+        (root_not_mem_child hd hsub)
+    | descend _ _ sub₂ hsub₂ h₂' =>
+      have heq := mem_unique_child hd hsub hsub₂
+        (isChildToward_mem_target ‹IsChildToward c₁ a x sub›)
+        (isChildToward_mem_target h₂')
+      exact ih (distinct_of_child hd hsub) (heq ▸ h₂')
 
 /-- CT-compose: if a <_A b ≤_A x, then child_toward(a, x) = child_toward(a, b). -/
 theorem childToward_compose {a b x c : α} {t : OrdTree α}
@@ -176,7 +372,54 @@ theorem childToward_compose {a b x c : α} {t : OrdTree α}
     (hbx : IsAncestorIn b x t)
     (hc : IsChildToward c a x t) :
     IsChildToward c a b t := by
-  sorry
+  induction hc with
+  | here cs hex =>
+    -- t = node a cs, child toward x is here
+    obtain ⟨child, hchild, hlabel, hx_in⟩ := hex
+    -- b is in the tree, b ≠ a, so b is in some child
+    have hne := hab.2
+    have hbx_anc := hbx
+    -- b is ancestor of x, b ≠ a (root), so b descends into a child
+    have hb_mem : b ∈ (node a cs : OrdTree α) := isAncestorIn_mem_left hbx
+    rw [mem_node_iff] at hb_mem
+    rcases hb_mem with rfl | ⟨child_b, hcb, hb_in⟩
+    · exact absurd rfl hne.symm
+    · -- b ∈ child_b, x ∈ child. Need: child_b = child
+      -- x is in child. b is ancestor of x, so x is reachable from b.
+      -- Since b ≠ a, IsAncestorIn b x (node a cs) must descend into some child.
+      have hb_ne_a : b ≠ a := hne.symm
+      obtain ⟨cb, hcb', hbx_in_cb⟩ := isAncestorIn_in_child hbx hb_ne_a
+      have hx_in_cb : x ∈ cb := isAncestorIn_mem_right hbx_in_cb
+      have : cb = child := mem_unique_child hd hcb' hchild hx_in_cb hx_in
+      rw [this] at hbx_in_cb
+      have hb_in_child : b ∈ child := isAncestorIn_mem_left hbx_in_cb
+      exact .here cs ⟨child, hchild, hlabel, hb_in_child⟩
+  | descend r cs sub hsub _ ih =>
+    -- t = node r cs, IsChildToward c a x sub
+    -- a ∈ sub (from the inner IsChildToward)
+    -- a ≠ r (since a ∈ sub and root ∉ sub by distinct)
+    have ha_in_sub : a ∈ sub := isChildToward_mem_ancestor
+      ‹IsChildToward c a x sub›
+    have ha_ne_r : a ≠ r := fun h => root_not_mem_child hd hsub (h ▸ ha_in_sub)
+    -- hab : IsProperAncestorIn a b (node r cs)
+    -- Since a ≠ r, IsAncestorIn a b must descend into a child
+    obtain ⟨ca, hca, hab_in_ca⟩ := isAncestorIn_in_child hab.1 ha_ne_r
+    -- a ∈ ca and a ∈ sub, so ca = sub
+    have : ca = sub := mem_unique_child hd hca hsub
+      (isAncestorIn_mem_left hab_in_ca) ha_in_sub
+    rw [this] at hab_in_ca
+    -- hbx : IsAncestorIn b x (node r cs), b ∈ sub
+    have hb_in_sub : b ∈ sub := isAncestorIn_mem_right hab_in_ca
+    have hx_in_sub : x ∈ sub := isChildToward_mem_target ‹IsChildToward c a x sub›
+    -- b ≠ r (since b ∈ sub and root ∉ sub)
+    have hb_ne_r : b ≠ r := fun h => root_not_mem_child hd hsub (h ▸ hb_in_sub)
+    obtain ⟨cb, hcb, hbx_in_cb⟩ := isAncestorIn_in_child hbx hb_ne_r
+    -- x ∈ cb, x ∈ sub, so cb = sub
+    have : cb = sub := mem_unique_child hd hcb hsub
+      (isAncestorIn_mem_right hbx_in_cb) hx_in_sub
+    rw [this] at hbx_in_cb
+    exact .descend r cs sub hsub
+      (ih (distinct_of_child hd hsub) ⟨hab_in_ca, hab.2⟩ hbx_in_cb)
 
 /-! ## Sibling ordering -/
 
