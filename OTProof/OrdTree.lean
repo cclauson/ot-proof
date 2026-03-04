@@ -421,6 +421,58 @@ theorem childToward_compose {a b x c : α} {t : OrdTree α}
     exact .descend r cs sub hsub
       (ih (distinct_of_child hd hsub) ⟨hab_in_ca, hab.2⟩ hbx_in_cb)
 
+/-- If `IsChildToward c a x t`, then `c` is an ancestor of `x` in `t` (or `c = x`). -/
+theorem isChildToward_ancestor_or_eq {c a x : α} {t : OrdTree α}
+    (h : IsChildToward c a x t) : IsAncestorIn c x t ∨ c = x := by
+  induction h with
+  | here cs hex =>
+    obtain ⟨child, hchild, hlabel, hx_in⟩ := hex
+    by_cases hcx : c = x
+    · exact Or.inr hcx
+    · left
+      exact .descend a cs child hchild
+        (hlabel ▸ root_isAncestorIn hx_in)
+  | descend b cs sub hsub _ ih =>
+    rcases ih with hanc | rfl
+    · exact Or.inl (.descend b cs sub hsub hanc)
+    · exact Or.inr rfl
+
+/-- The label of a tree is a member of that tree. -/
+theorem label_mem_self (t : OrdTree α) : t.label ∈ t := by
+  cases t with | node a cs => exact mem_root a cs
+
+/-- IsChildToward implies the ancestor is an ancestor of the child label. -/
+theorem isChildToward_anc_of_child {c a x : α} {t : OrdTree α}
+    (h : IsChildToward c a x t) : IsAncestorIn a c t := by
+  induction h with
+  | here cs hex =>
+    obtain ⟨child, hchild, hlabel, _⟩ := hex
+    exact .root cs (mem_child hchild (hlabel ▸ label_mem_self child))
+  | descend b cs sub hsub _ ih =>
+    exact .descend b cs sub hsub ih
+
+/-- In a distinct tree, child_toward label differs from the ancestor label. -/
+theorem isChildToward_ne {c a x : α} {t : OrdTree α}
+    (hd : t.Distinct) (h : IsChildToward c a x t) : a ≠ c := by
+  induction h with
+  | here cs hex =>
+    obtain ⟨child, hchild, hlabel, _⟩ := hex
+    intro heq
+    exact root_not_mem_child hd hchild (heq ▸ hlabel ▸ label_mem_self child)
+  | descend _ cs sub hsub _ ih =>
+    exact ih (distinct_of_child hd hsub)
+
+/-- In a distinct tree, `IsChildToward c a x (node a cs)` must use the `here`
+    constructor (the ancestor is at the root). -/
+theorem isChildToward_here_of_root {c a x : α} {cs : List (OrdTree α)}
+    (hd : (node a cs).Distinct)
+    (h : IsChildToward c a x (node a cs)) :
+    ∃ child ∈ cs, child.label = c ∧ x ∈ child := by
+  cases h with
+  | here _ hex => exact hex
+  | descend _ _ sub hsub h' =>
+    exact absurd (isChildToward_mem_ancestor h') (root_not_mem_child hd hsub)
+
 /-! ## Sibling ordering -/
 
 /-- `SibLt c₁ c₂ t` means `c₁` and `c₂` are siblings (children of the same
@@ -435,6 +487,41 @@ inductive SibLt (c₁ c₂ : α) : OrdTree α → Prop where
       SibLt c₁ c₂ (node a cs)
   | descend : (a : α) → (cs : List (OrdTree α)) → (sub : OrdTree α) →
       sub ∈ cs → SibLt c₁ c₂ sub → SibLt c₁ c₂ (node a cs)
+
+/-- SibLt totality for distinct child_toward labels. -/
+theorem sibLt_total_of_childToward {cx cy a x y : α} {t : OrdTree α}
+    (hd : t.Distinct) (hne : cx ≠ cy)
+    (hcx : IsChildToward cx a x t) (hcy : IsChildToward cy a y t) :
+    SibLt cx cy t ∨ SibLt cy cx t := by
+  induction hcx with
+  | here cs hex =>
+    have hey := isChildToward_here_of_root hd hcy
+    obtain ⟨child_x, hcx_mem, hcx_lbl, _⟩ := hex
+    obtain ⟨child_y, hcy_mem, hcy_lbl, _⟩ := hey
+    obtain ⟨i, hi⟩ := List.mem_iff_get.mp hcx_mem
+    obtain ⟨j, hj⟩ := List.mem_iff_get.mp hcy_mem
+    have hij : i ≠ j := by
+      intro heq; rw [heq] at hi
+      exact hne ((congrArg label hi).symm.trans (congrArg label hj) |>.symm.trans
+        hcx_lbl |>.symm |>.trans hcy_lbl |>.symm).symm
+    rcases Nat.lt_or_gt_of_ne (Fin.val_ne_of_ne hij) with h | h
+    · left; exact .here a cs ⟨i, j, h,
+        (congrArg label hi).trans hcx_lbl,
+        (congrArg label hj).trans hcy_lbl⟩
+    · right; exact .here a cs ⟨j, i, h,
+        (congrArg label hj).trans hcy_lbl,
+        (congrArg label hi).trans hcx_lbl⟩
+  | descend b cs' sub' hsub' hcx_sub ih =>
+    cases hcy with
+    | here _ _ =>
+      exact absurd (isChildToward_mem_ancestor hcx_sub) (root_not_mem_child hd hsub')
+    | descend _ _ sub₂ hsub₂ hcy' =>
+      have ha_sub := isChildToward_mem_ancestor hcx_sub
+      have ha_sub₂ := isChildToward_mem_ancestor hcy'
+      have heq : sub₂ = sub' := mem_unique_child hd hsub₂ hsub' ha_sub₂ ha_sub
+      rcases ih (distinct_of_child hd hsub') (heq ▸ hcy') with h | h
+      · left; exact .descend b cs' sub' hsub' h
+      · right; exact .descend b cs' sub' hsub' h
 
 end OrdTree
 
