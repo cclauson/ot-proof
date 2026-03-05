@@ -638,6 +638,173 @@ theorem applyInsert_eq_insertLeaf [DecidableEq α] (lt : α → α → Bool)
           · exact ih (fun c hc => huniq' c (List.mem_cons_of_mem _ hc))
 termination_by t
 
+/-! ## Helpers for applyInsert commutativity -/
+
+/-- `applyInsert` preserves the root label. -/
+@[simp] theorem rootLabel_applyInsert [DecidableEq α] (lt : α → α → Bool)
+    (parent x : α) (t : OrdTree α) :
+    (applyInsert lt parent x t).rootLabel = t.rootLabel := by
+  cases t with | node a cs => simp [applyInsert_node]; split <;> rfl
+
+/-- `countP` over `insertIdx` equals `countP` plus the predicate on the new element. -/
+private theorem countP_insertIdx {α' : Type*} {p : α' → Bool} {l : List α'}
+    {k : Nat} {v : α'} (hk : k ≤ l.length) :
+    (l.insertIdx k v).countP p = l.countP p + if p v then 1 else 0 := by
+  induction l generalizing k with
+  | nil => simp at hk; subst hk; simp [List.insertIdx_zero]
+  | cons a l ih =>
+    cases k with
+    | zero =>
+      simp [List.insertIdx_zero, List.countP_cons]
+    | succ n =>
+      simp only [List.insertIdx_succ_cons, List.countP_cons]
+      rw [ih (Nat.le_of_succ_le_succ hk)]
+      omega
+
+/-- `countP` is monotone under pointwise implication. -/
+private theorem countP_le_countP_of_imp {α' : Type*} {p q : α' → Bool} {l : List α'}
+    (h : ∀ x ∈ l, p x = true → q x = true) :
+    l.countP p ≤ l.countP q := by
+  induction l with
+  | nil => simp
+  | cons a l ih =>
+    simp only [List.countP_cons]
+    have ih' := ih (fun x hx => h x (List.mem_cons_of_mem _ hx))
+    by_cases hp : p a = true
+    · rw [hp, h a (List.mem_cons_self ..) hp]; omega
+    · simp only [Bool.not_eq_true] at hp; rw [hp]; simp; omega
+
+/-- `applyInsert` on a leaf that doesn't contain the parent is identity. -/
+private theorem applyInsert_leaf_ne [DecidableEq α] (lt : α → α → Bool)
+    {parent x a : α} (hne : a ≠ parent) :
+    applyInsert lt parent x (.node a []) = .node a [] := by
+  simp [applyInsert_node, if_neg hne]
+
+/-! ## applyInsert commutativity -/
+
+/-- Two `applyInsert` operations on distinct fresh elements commute.
+    Requires `lt_sib` to be transitive and total on `{a, b}`. -/
+theorem applyInsert_comm [DecidableEq α] (lt_sib : α → α → Bool)
+    {t : OrdTree α} {pa pb a b : α}
+    (hd : t.Distinct) (ha : a ∉ t) (hb : b ∉ t) (hab : a ≠ b)
+    (hpa : pa ∈ t) (hpb : pb ∈ t)
+    (hlt_trans : ∀ x y z, lt_sib x y = true → lt_sib y z = true → lt_sib x z = true)
+    (hlt_total_ab : lt_sib a b = true ∨ lt_sib b a = true)
+    (hlt_asym_ab : lt_sib a b = true → lt_sib b a = false) :
+    applyInsert lt_sib pa a (applyInsert lt_sib pb b t) =
+    applyInsert lt_sib pb b (applyInsert lt_sib pa a t) := by
+  -- Helper: members of applyInsert are either original or inserted element
+  have mem_ai : ∀ {lt' : α → α → Bool} {p x y : α} {s : OrdTree α},
+      s.Distinct → p ∈ s → y ∈ applyInsert lt' p x s → y ∈ s ∨ y = x := by
+    intro lt' p x y s hds hps hy
+    obtain ⟨pos, _, hpos_eq⟩ := applyInsert_eq_insertLeaf lt' p x s hds hps
+    rw [hpos_eq] at hy; exact mem_of_mem_insertLeaf hy
+  match t with
+  | .node r cs =>
+    by_cases hpa_r : r = pa <;> by_cases hpb_r : r = pb
+    · -- Case 1: r = pa = pb (same parent)
+      subst hpa_r; subst hpb_r
+      simp only [applyInsert_node, ite_true]
+      congr 1
+      set cp_a := cs.countP (fun c => lt_sib c.rootLabel a)
+      set cp_b := cs.countP (fun c => lt_sib c.rootLabel b)
+      -- Adjusted countP after inserting the other leaf
+      have hcp_a' : (cs.insertIdx cp_b (.node b [])).countP
+            (fun c => lt_sib c.rootLabel a) =
+          cp_a + if lt_sib b a then 1 else 0 :=
+        countP_insertIdx (List.countP_le_length)
+      have hcp_b' : (cs.insertIdx cp_a (.node a [])).countP
+            (fun c => lt_sib c.rootLabel b) =
+          cp_b + if lt_sib a b then 1 else 0 :=
+        countP_insertIdx (List.countP_le_length)
+      rw [hcp_a', hcp_b']
+      rcases hlt_total_ab with hab_lt | hba_lt
+      · -- lt_sib a b = true
+        simp only [hab_lt, hlt_asym_ab hab_lt, ite_true, ite_false]
+        exact (List.insertIdx_comm (OrdTree.node a []) (OrdTree.node b [])
+          (countP_le_countP_of_imp fun c _ hc => hlt_trans c.rootLabel a b hc hab_lt)
+          List.countP_le_length).symm
+      · -- lt_sib b a = true
+        have hab_f : lt_sib a b = false := by
+          cases h : lt_sib a b <;> [rfl; simp [hlt_asym_ab h] at hba_lt]
+        simp only [hba_lt, hab_f, ite_true, ite_false]
+        exact List.insertIdx_comm (OrdTree.node b []) (OrdTree.node a [])
+          (countP_le_countP_of_imp fun c _ hc => hlt_trans c.rootLabel b a hc hba_lt)
+          List.countP_le_length
+    · -- Case 2: r = pa, r ≠ pb
+      subst hpa_r
+      simp only [applyInsert_node, ite_true, if_neg hpb_r]
+      congr 1
+      -- countP preserved since applyInsert preserves rootLabel
+      suffices hcp_eq : (cs.map (applyInsert lt_sib pb b)).countP
+            (fun c => lt_sib c.rootLabel a) =
+          cs.countP (fun c => lt_sib c.rootLabel a) by
+        rw [hcp_eq, List.map_insertIdx]; congr 1
+        exact (applyInsert_leaf_ne lt_sib
+          (show a ≠ pb from fun h => ha (h ▸ hpb))).symm
+      suffices ∀ (l : List (OrdTree α)),
+          (l.map (applyInsert lt_sib pb b)).countP (fun c => lt_sib c.rootLabel a) =
+          l.countP (fun c => lt_sib c.rootLabel a) from this cs
+      intro l; induction l with
+      | nil => simp
+      | cons d rest ih =>
+        simp only [List.map_cons, List.countP_cons, rootLabel_applyInsert, ih]
+    · -- Case 3: r ≠ pa, r = pb
+      subst hpb_r
+      simp only [applyInsert_node, ite_true, if_neg hpa_r]
+      congr 1
+      suffices hcp_eq : (cs.map (applyInsert lt_sib pa a)).countP
+            (fun c => lt_sib c.rootLabel b) =
+          cs.countP (fun c => lt_sib c.rootLabel b) by
+        rw [hcp_eq, List.map_insertIdx]; congr 1
+        exact applyInsert_leaf_ne lt_sib
+          (show b ≠ pa from fun h => hb (h ▸ hpa))
+      suffices ∀ (l : List (OrdTree α)),
+          (l.map (applyInsert lt_sib pa a)).countP (fun c => lt_sib c.rootLabel b) =
+          l.countP (fun c => lt_sib c.rootLabel b) from this cs
+      intro l; induction l with
+      | nil => simp
+      | cons d rest ih =>
+        simp only [List.map_cons, List.countP_cons, rootLabel_applyInsert, ih]
+    · -- Case 4: r ≠ pa, r ≠ pb (both recurse)
+      simp only [applyInsert_node, if_neg hpa_r, if_neg hpb_r, List.map_map]
+      congr 1
+      -- Pointwise equality of composed maps
+      suffices hfn : ∀ c ∈ cs,
+          applyInsert lt_sib pa a (applyInsert lt_sib pb b c) =
+          applyInsert lt_sib pb b (applyInsert lt_sib pa a c) by
+        suffices ∀ {f g : OrdTree α → OrdTree α} (l : List (OrdTree α)),
+            (∀ c ∈ l, f c = g c) → l.map f = l.map g from this cs hfn
+        intro f g l hl; induction l with
+        | nil => rfl
+        | cons d rest ih =>
+          simp only [List.map_cons]; congr 1
+          · exact hl d (List.mem_cons_self ..)
+          · exact ih (fun c hc => hl c (List.mem_cons_of_mem _ hc))
+      intro c hc
+      have hd_c := distinct_of_child hd hc
+      have ha_c : a ∉ c := fun h => ha (mem_child hc h)
+      have hb_c : b ∉ c := fun h => hb (mem_child hc h)
+      by_cases hpa_c : pa ∈ c <;> by_cases hpb_c : pb ∈ c
+      · exact applyInsert_comm lt_sib hd_c ha_c hb_c hab hpa_c hpb_c
+          hlt_trans hlt_total_ab hlt_asym_ab
+      · -- pa ∈ c, pb ∉ c
+        have : pb ∉ applyInsert lt_sib pa a c := by
+          intro hmem; rcases mem_ai hd_c hpa_c hmem with h | h
+          · exact hpb_c h
+          · exact ha (h ▸ hpb)
+        rw [applyInsert_of_not_mem hpb_c, applyInsert_of_not_mem this]
+      · -- pa ∉ c, pb ∈ c
+        have : pa ∉ applyInsert lt_sib pb b c := by
+          intro hmem; rcases mem_ai hd_c hpb_c hmem with h | h
+          · exact hpa_c h
+          · exact hb (h ▸ hpa)
+        rw [applyInsert_of_not_mem hpa_c, applyInsert_of_not_mem this]
+      · -- pa ∉ c, pb ∉ c
+        conv_lhs => rw [applyInsert_of_not_mem hpb_c, applyInsert_of_not_mem hpa_c]
+        conv_rhs => rw [applyInsert_of_not_mem hpa_c, applyInsert_of_not_mem hpb_c]
+termination_by t
+
 end OrdTree
 
 end OTProof
