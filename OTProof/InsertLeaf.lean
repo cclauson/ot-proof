@@ -71,6 +71,31 @@ theorem list_insertIdx_eq_take_cons_drop {l : List α} {v : α} {pos : Nat}
       congr 1
       exact ih (Nat.le_of_succ_le_succ h)
 
+/-! ## Helper: insertLeaf is identity when parent not in tree -/
+
+/-- If parent is not in the tree, insertLeaf returns the tree unchanged. -/
+@[simp] theorem insertLeaf_of_not_mem [DecidableEq α] {t : OrdTree α}
+    {parent x : α} {pos : Nat} (h : parent ∉ t) :
+    insertLeaf t parent x pos = t := by
+  match t with
+  | .node a cs =>
+    simp only [insertLeaf_node]
+    split
+    · next heq => exact absurd (heq ▸ mem_root a cs) h
+    · congr 1
+      suffices ∀ (l : List (OrdTree α)),
+          (∀ c ∈ l, insertLeaf c parent x pos = c) →
+          l.map (fun c => insertLeaf c parent x pos) = l from
+        this cs (fun c hc => insertLeaf_of_not_mem (fun hp => h (mem_child hc hp)))
+      intro l hl
+      induction l with
+      | nil => rfl
+      | cons d rest ih =>
+        rw [List.map_cons, hl d (List.mem_cons_self ..)]
+        congr 1
+        exact ih (fun c hc => hl c (List.mem_cons_of_mem _ hc))
+termination_by t
+
 /-! ## IL-1: Membership preservation -/
 
 /-- Existing members are preserved by insertLeaf. -/
@@ -132,10 +157,47 @@ theorem numChildren_eq_of_distinct [DecidableEq α]
     (hc : c ∈ cs) (hp : parent ∈ c) :
     numChildren parent (.node a cs) = numChildren parent c := by
   simp only [numChildren_node, if_neg hne]
-  -- In a Distinct tree, parent appears in exactly one child (c).
-  -- All other children c' have parent ∉ c' (by mem_unique_child),
-  -- hence numChildren parent c' = 0. The foldl sum equals numChildren parent c.
-  sorry
+  have hnd : (cs.flatMap fun c => c.toList).Nodup := by
+    unfold Distinct at hd; rw [toList_node] at hd; exact (List.nodup_cons.mp hd).2
+  -- Prove: foldl of numChildren over cs equals numChildren parent c
+  -- by induction on a generalized list, using pairwise disjointness from Nodup
+  suffices ∀ (l : List (OrdTree α)),
+      (l.flatMap fun c => c.toList).Nodup →
+      c ∈ l →
+      l.foldl (fun acc x => acc + numChildren parent x) 0 = numChildren parent c from
+    this cs hnd hc
+  intro l
+  induction l with
+  | nil => intro _ hc'; exact absurd hc' List.not_mem_nil
+  | cons d rest ih =>
+    intro hnd_l hc_l
+    simp only [List.foldl_cons, Nat.zero_add]
+    have ⟨_, hpw_l⟩ := List.nodup_flatMap.mp hnd_l
+    have hpw_hd := (List.pairwise_cons.mp hpw_l).1
+    have hnd_rest : (rest.flatMap fun c => c.toList).Nodup :=
+      List.nodup_flatMap.mpr
+        ⟨fun c hc => (List.nodup_flatMap.mp hnd_l).1 c (List.mem_cons_of_mem _ hc),
+         (List.pairwise_cons.mp hpw_l).2⟩
+    by_cases hpd : parent ∈ d
+    · rcases List.mem_cons.mp hc_l with rfl | hc_rest
+      · -- d = c: all rest elements contribute 0 (by pairwise disjointness)
+        suffices ∀ (l : List (OrdTree α)),
+            (∀ e ∈ l, parent ∉ e) →
+            ∀ init, l.foldl (fun acc x => acc + numChildren parent x) init = init from
+          this rest (fun e he hpe => hpw_hd e he hpd hpe) _
+        intro l' hl' init
+        induction l' generalizing init with
+        | nil => rfl
+        | cons e rest' ih' =>
+          simp only [List.foldl_cons,
+            numChildren_eq_zero_of_not_mem (hl' e (List.mem_cons_self ..)), Nat.add_zero]
+          exact ih' (fun e' he' => hl' e' (List.mem_cons_of_mem _ he')) init
+      · -- c ∈ rest but parent ∈ d: contradicts pairwise disjointness
+        exact absurd hp (hpw_hd c hc_rest hpd)
+    · rw [numChildren_eq_zero_of_not_mem hpd]
+      rcases List.mem_cons.mp hc_l with rfl | hc_rest
+      · exact absurd hp hpd
+      · exact ih hnd_rest hc_rest
 
 /-- The newly inserted element is a member of the resulting tree,
     provided the parent exists, pos is valid, and the tree is distinct. -/
@@ -229,8 +291,76 @@ theorem toList_insertLeaf [DecidableEq α] {t : OrdTree α}
           exact hpos
         obtain ⟨k, hk_le, hk_eq⟩ := toList_insertLeaf hd_c hpc hx_c hpos_c
         rw [toList_node, toList_node]
-        -- Only child c changes in the flatMap; need to lift
-        sorry
+        -- Decompose cs at c's position
+        obtain ⟨cs₁, cs₂, hcs_eq⟩ := List.append_of_mem hc
+        subst hcs_eq
+        -- Extract pairwise disjointness from Distinct
+        have hfm_nd : ((cs₁ ++ c :: cs₂).flatMap fun c => c.toList).Nodup := by
+          unfold Distinct at hd; rw [toList_node] at hd; exact (List.nodup_cons.mp hd).2
+        have hpw := (List.nodup_flatMap.mp hfm_nd).2
+        have hpw_app := List.pairwise_append.mp hpw
+        -- parent ∉ c' for elements of cs₁ and cs₂
+        have hno₁ : ∀ c' ∈ cs₁, parent ∉ c' :=
+          fun c' hc' hp' => (hpw_app.2.2 c' hc' c (List.mem_cons_self ..)) hp' hpc
+        have hno₂ : ∀ c' ∈ cs₂, parent ∉ c' :=
+          fun c' hc' => ((List.pairwise_cons.mp hpw_app.2.1).1 c' hc') hpc
+        -- map insertLeaf preserves sublists where parent is absent
+        have map_id : ∀ (l : List (OrdTree α)),
+            (∀ c' ∈ l, parent ∉ c') →
+            l.map (fun c' => insertLeaf c' parent x pos) = l := by
+          intro l hl; induction l with
+          | nil => rfl
+          | cons d rest ih =>
+            rw [List.map_cons, insertLeaf_of_not_mem (hl d (List.mem_cons_self ..))]
+            congr 1; exact ih (fun c' hc' => hl c' (List.mem_cons_of_mem _ hc'))
+        -- Set up abbreviations
+        set A := cs₁.flatMap (fun c => c.toList) with hA_def
+        set B := c.toList with hB_def
+        set C := cs₂.flatMap (fun c => c.toList) with hC_def
+        -- Compute the modified flatMap
+        have hmod : ((cs₁ ++ c :: cs₂).map (fun c' => insertLeaf c' parent x pos)).flatMap
+            (fun c => c.toList) = A ++ B.insertIdx k x ++ C := by
+          rw [List.map_append, List.map_cons, map_id cs₁ hno₁, map_id cs₂ hno₂]
+          simp only [List.flatMap_append, List.flatMap_cons, hk_eq,
+            ← hA_def, ← hC_def, List.append_assoc]
+        -- Compute the original flatMap
+        have horig : (cs₁ ++ c :: cs₂).flatMap (fun c => c.toList) = A ++ B ++ C := by
+          simp only [List.flatMap_append, List.flatMap_cons,
+            ← hA_def, ← hB_def, ← hC_def, List.append_assoc]
+        -- Helper: insertIdx distributes over A ++ B ++ C
+        have ins_mid : ∀ (A' B' C' : List α) (k' : Nat) (x' : α),
+            k' ≤ B'.length →
+            (A' ++ B' ++ C').insertIdx (A'.length + k') x' =
+              A' ++ B'.insertIdx k' x' ++ C' := by
+          intro A'
+          induction A' with
+          | nil =>
+            intro B' C' k' x' hk'
+            simp only [List.nil_append, List.length_nil, Nat.zero_add]
+            rw [list_insertIdx_eq_take_cons_drop (show k' ≤ (B' ++ C').length from by
+                rw [List.length_append]; omega),
+              List.take_append_of_le_length hk',
+              List.drop_append_of_le_length hk',
+              list_insertIdx_eq_take_cons_drop hk']
+            simp [List.append_assoc]
+          | cons a' A'' ih =>
+            intro B' C' k' x' hk'
+            simp only [List.cons_append, List.length_cons]
+            rw [show A''.length + 1 + k' = (A''.length + k') + 1 from by omega,
+                List.insertIdx_succ_cons]
+            congr 1
+            exact ih B' C' k' x' hk'
+        -- Provide the witness k' = 1 + A.length + k
+        refine ⟨1 + A.length + k, ?_, ?_⟩
+        · -- k' ≤ length
+          rw [List.length_cons, horig, List.length_append, List.length_append]
+          omega
+        · -- equality
+          rw [hmod, horig,
+              show 1 + A.length + k = (A.length + k) + 1 from by omega,
+              List.insertIdx_succ_cons]
+          congr 1
+          exact (ins_mid A B C k x hk_le).symm
 termination_by t
 
 /-! ## IL-4: Distinct preservation -/

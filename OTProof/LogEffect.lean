@@ -57,12 +57,24 @@ theorem logEffect_step [DecidableEq α]
       (OrdTree.insertLeaf t slo.parent slo.lo.char slo.childPos) := by
   obtain ⟨k, _, hk_eq, hidx_eq⟩ := hidx
   unfold LogEffectInv treeDoc at hinv ⊢
-  rw [hinv, hk_eq]
-  -- Root label is unchanged by insertLeaf, so toList starts with same root
-  -- tail of (toList.insertIdx k x) = (tail of toList).insertIdx (k-1) x
-  -- when k ≥ 1 (root stays at position 0)
-  rw [hidx_eq]
-  sorry
+  rw [hinv, hk_eq, hidx_eq]
+  -- Goal: t.toList.tail.insertIdx (k - 1) char = (t.toList.insertIdx k char).tail
+  cases k with
+  | zero =>
+    -- k = 0 contradicts freshness: root is preserved by insertLeaf
+    exfalso
+    match t with
+    | .node a cs =>
+      rw [toList_node, List.insertIdx_zero] at hk_eq
+      have h_head : (OrdTree.insertLeaf (.node a cs) slo.parent slo.lo.char slo.childPos).toList.head?
+          = some a := by
+        simp only [OrdTree.insertLeaf_node]; split <;> simp [toList_node]
+      rw [hk_eq] at h_head; simp at h_head
+      exact hfresh (h_head ▸ mem_root a cs)
+  | succ n =>
+    match t with
+    | .node a cs =>
+      simp only [toList_node, List.tail_cons, List.insertIdx_succ_cons, Nat.succ_sub_one]
 
 /-! ## LE-2: Main theorem — rebase preserves Log Effect Invariant -/
 
@@ -105,11 +117,15 @@ theorem rebase_preserves_logEffect [DecidableEq α]
     LogEffectInv
       (doc_b.insertIdx rebased.idx slo_a.lo.char)
       (OrdTree.insertLeaf t_b slo_a.parent slo_a.lo.char slo_a.childPos) := by
-  -- Strategy:
-  -- 1. Apply logEffect_step to get doc_b = treeDoc t_b
-  -- 2. By stability (lcaLt_stable_iff), determine ordering
-  -- 3. Apply rebase_correct for list-level commutativity
-  -- 4. Apply logEffect_step again for the final step
+  -- Step 1: The invariant is preserved after inserting b
+  have hinv_b := logEffect_step hd hinv hb_fresh hpb hpos_b hidx_b
+  -- Unfold to the core list equation
+  unfold LogEffectInv treeDoc at hinv_b ⊢
+  rw [hinv_b]
+  -- Remaining goal: treeDoc(t_b).insertIdx rebased.idx a = treeDoc(t_ab)
+  -- This requires relating the rebased list-level index to the
+  -- tree-level DFS insertion position, via insertIdx_comm and the
+  -- fact that DFS positions shift predictably under leaf insertion.
   sorry
 
 end OTProof

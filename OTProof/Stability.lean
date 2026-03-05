@@ -63,20 +63,40 @@ theorem PrecedesIn.of_insertIdx {x y z : α} {l : List α} {k : Nat}
   -- and l = (l.insertIdx k z).eraseIdx k
   -- Since x ≠ z and y ≠ z, erasing z preserves the PrecedesIn witness.
   rw [list_insertIdx_eq_take_cons_drop hk] at h
-  -- h : PrecedesIn x y (l.take k ++ z :: l.drop k)
-  -- l = l.take k ++ l.drop k
   rw [← List.take_append_drop k l]
-  -- Goal: PrecedesIn x y (l.take k ++ l.drop k)
-  -- h gives us witnesses in l.take k ++ z :: l.drop k
-  -- Removing z (which is neither x nor y) from the concatenation
-  -- preserves the relative order.
-  obtain ⟨pre, mid, suf, heq⟩ := h
-  -- heq : l.take k ++ z :: l.drop k = pre ++ x :: mid ++ y :: suf
-  -- z is somewhere in this list, not at x or y position
-  -- Case: z ∈ pre → removing from pre preserves PrecedesIn
-  -- Case: z ∈ mid → removing from mid preserves PrecedesIn
-  -- Case: z ∈ suf → removing from suf preserves PrecedesIn
-  sorry
+  -- Suffices: removing z from the middle of A ++ z :: B preserves PrecedesIn
+  suffices ∀ (A B : List α),
+      PrecedesIn x y (A ++ z :: B) → PrecedesIn x y (A ++ B) by
+    exact this _ _ h
+  intro A
+  induction A with
+  | nil =>
+    intro B ⟨pre, mid, suf, heq⟩
+    simp only [List.nil_append] at heq ⊢
+    cases pre with
+    | nil =>
+      simp at heq
+      exact absurd heq.1 (Ne.symm hx)
+    | cons p pre' =>
+      simp [List.cons_append] at heq
+      obtain ⟨rfl, rfl⟩ := heq
+      exact ⟨pre', mid, suf, by simp [List.append_assoc]⟩
+  | cons a A' ih =>
+    intro B ⟨pre, mid, suf, heq⟩
+    cases pre with
+    | nil =>
+      simp at heq
+      obtain ⟨rfl, hmid⟩ := heq
+      apply precedesIn_cons_of_mem
+      have hy_in : y ∈ A' ++ z :: B := by
+        rw [hmid]; exact List.mem_append_right _ (List.mem_cons_self ..)
+      rcases List.mem_append.mp hy_in with h₁ | h₂
+      · exact List.mem_append_left _ h₁
+      · exact List.mem_append_right _ ((List.mem_cons.mp h₂).resolve_left hy)
+    | cons p pre' =>
+      simp [List.cons_append] at heq
+      obtain ⟨rfl, heq'⟩ := heq
+      exact (ih _ ⟨pre', mid, suf, by simp [List.append_assoc] at heq' ⊢; exact heq'⟩).cons a
 
 /-! ## S-2: dfsLt preservation -/
 
