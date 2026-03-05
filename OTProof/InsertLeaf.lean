@@ -393,6 +393,251 @@ theorem distinct_insertLeaf [DecidableEq α] {t : OrdTree α}
   rw [hk_eq]
   exact List.nodup_insertIdx hd (fun h => hx h) hk_le
 
+/-! ## IL-5: Membership in insertLeaf -/
+
+/-- Any member of `insertLeaf t parent x pos` is either `x` or was already in `t`. -/
+theorem mem_of_mem_insertLeaf [DecidableEq α] {t : OrdTree α}
+    {parent x y : α} {pos : Nat} (h : y ∈ insertLeaf t parent x pos) :
+    y ∈ t ∨ y = x := by
+  match t with
+  | .node a cs =>
+    simp only [insertLeaf_node] at h
+    split at h
+    · -- a = parent: children = cs.insertIdx pos (node x [])
+      rw [mem_node_iff] at h
+      rcases h with rfl | ⟨c, hc, hyc⟩
+      · left; exact mem_root _ cs
+      · rcases List.eq_or_mem_of_mem_insertIdx hc with rfl | hc'
+        · -- c = node x []
+          rw [mem_node_iff] at hyc
+          rcases hyc with rfl | ⟨_, hd, _⟩
+          · right; rfl
+          · simp at hd
+        · left; exact mem_child hc' hyc
+    · -- a ≠ parent: children mapped
+      rw [mem_node_iff] at h
+      rcases h with rfl | ⟨c, hc, hyc⟩
+      · left; exact mem_root _ cs
+      · obtain ⟨c', hc', rfl⟩ := List.mem_map.mp hc
+        rcases mem_of_mem_insertLeaf hyc with h | h
+        · left; exact mem_child hc' h
+        · right; exact h
+termination_by t
+
+/-! ## IL-6: numChildren monotonicity under insertLeaf -/
+
+/-- foldl of addition is monotone in the initial value. -/
+private theorem foldl_add_mono {γ : Type*} (f : γ → Nat) (l : List γ)
+    {i j : Nat} (h : i ≤ j) :
+    l.foldl (fun acc c => acc + f c) i ≤ l.foldl (fun acc c => acc + f c) j := by
+  induction l generalizing i j with
+  | nil => exact h
+  | cons a l ih => exact ih (Nat.add_le_add_right h (f a))
+
+/-- foldl of addition over insertIdx is ≥ the original foldl. -/
+private theorem foldl_add_le_insertIdx {γ : Type*} (f : γ → Nat) (l : List γ)
+    (k : Nat) (v : γ) (init : Nat) :
+    l.foldl (fun acc c => acc + f c) init ≤
+      (l.insertIdx k v).foldl (fun acc c => acc + f c) init := by
+  induction l generalizing k init with
+  | nil =>
+    cases k with
+    | zero => simp only [List.insertIdx_zero, List.foldl_cons, List.foldl_nil]; omega
+    | succ n => simp only [List.insertIdx_succ_nil]; exact Nat.le_refl _
+  | cons a l ih =>
+    cases k with
+    | zero =>
+      simp only [List.insertIdx_zero, List.foldl_cons]
+      exact foldl_add_mono f l (by omega : init + f a ≤ init + f v + f a)
+    | succ n =>
+      simp only [List.insertIdx_succ_cons, List.foldl_cons]
+      exact ih n (init + f a)
+
+/-- foldl of addition is monotone when each mapped value is ≥ the original. -/
+private theorem foldl_add_map_le {γ : Type*} (f : γ → Nat) (g : γ → γ)
+    (hfg : ∀ b, f b ≤ f (g b)) (l : List γ) (init : Nat) :
+    l.foldl (fun acc c => acc + f c) init ≤
+      (l.map g).foldl (fun acc c => acc + f c) init := by
+  induction l generalizing init with
+  | nil => exact Nat.le_refl _
+  | cons a l ih =>
+    simp only [List.map_cons, List.foldl_cons]
+    exact Nat.le_trans (ih (init + f a))
+      (foldl_add_mono f (l.map g) (Nat.add_le_add_left (hfg a) init))
+
+/-- numChildren is monotone under insertLeaf. -/
+theorem numChildren_le_insertLeaf [DecidableEq α] (qp : α) (t : OrdTree α)
+    (parent x : α) (pos : Nat) :
+    numChildren qp t ≤ numChildren qp (insertLeaf t parent x pos) := by
+  match t with
+  | .node a cs =>
+    simp only [insertLeaf_node]
+    by_cases hap : a = parent
+    · subst hap
+      simp only [ite_true, numChildren_node]
+      by_cases haq : a = qp
+      · subst haq; simp only [ite_true, List.length_insertIdx]
+        by_cases h : pos ≤ cs.length <;> simp [h] <;> omega
+      · simp only [if_neg haq]
+        exact foldl_add_le_insertIdx (numChildren qp) cs pos (node x []) 0
+    · simp only [if_neg hap, numChildren_node]
+      by_cases haq : a = qp
+      · subst haq; simp [ite_true, List.length_map]
+      · simp only [if_neg haq]
+        -- Per-child proof (tree recursion)
+        have key : ∀ c ∈ cs,
+            numChildren qp c ≤ numChildren qp (insertLeaf c parent x pos) :=
+          fun c _hc => numChildren_le_insertLeaf qp c parent x pos
+        -- Foldl inequality from pointwise inequality (list induction only)
+        suffices ∀ (l : List (OrdTree α)),
+            (∀ c ∈ l, numChildren qp c ≤ numChildren qp (insertLeaf c parent x pos)) →
+            ∀ (init : Nat),
+            l.foldl (fun acc c => acc + numChildren qp c) init ≤
+              (l.map (fun c => insertLeaf c parent x pos)).foldl
+                (fun acc c => acc + numChildren qp c) init from
+          this cs key 0
+        intro l
+        induction l with
+        | nil => intro _ init; exact Nat.le_refl _
+        | cons d rest ih =>
+          intro hl init
+          simp only [List.map_cons, List.foldl_cons]
+          exact Nat.le_trans
+            (ih (fun c hc => hl c (List.mem_cons_of_mem _ hc)) (init + numChildren qp d))
+            (foldl_add_mono (numChildren qp)
+              (rest.map (fun c => insertLeaf c parent x pos))
+              (Nat.add_le_add_left (hl d (List.mem_cons_self ..)) init))
+termination_by t
+
+/-- A fresh element not equal to the inserted element stays absent. -/
+theorem not_mem_insertLeaf_fresh [DecidableEq α] {t : OrdTree α}
+    {parent x y : α} {pos : Nat} (hy : y ∉ t) (hyx : y ≠ x) :
+    y ∉ insertLeaf t parent x pos :=
+  fun h => (mem_of_mem_insertLeaf h).elim hy hyx
+
+/-! ## applyInsert: position-from-tiebreaker insertion -/
+
+/-- Root label of a tree. -/
+def rootLabel : OrdTree α → α
+  | .node a _ => a
+
+@[simp] theorem rootLabel_node (a : α) (cs : List (OrdTree α)) :
+    rootLabel (.node a cs) = a := rfl
+
+/-- Insert a new leaf `x` as a child of `parent`, with sibling position
+    determined by the tiebreaker ordering `lt`.  `lt c x = true` means
+    child `c` precedes `x` among siblings. -/
+def applyInsert [DecidableEq α] (lt : α → α → Bool)
+    (parent x : α) : OrdTree α → OrdTree α
+  | .node a cs =>
+    if a = parent then
+      .node a (cs.insertIdx (cs.countP (fun c => lt c.rootLabel x)) (.node x []))
+    else .node a (cs.map (applyInsert lt parent x))
+
+@[simp] theorem applyInsert_node [DecidableEq α] (lt : α → α → Bool)
+    (parent x a : α) (cs : List (OrdTree α)) :
+    applyInsert lt parent x (.node a cs) =
+      if a = parent then
+        .node a (cs.insertIdx (cs.countP (fun c => lt c.rootLabel x)) (.node x []))
+      else .node a (cs.map (applyInsert lt parent x)) := by
+  conv_lhs => unfold applyInsert
+
+/-- If parent is not in the tree, applyInsert returns the tree unchanged. -/
+@[simp] theorem applyInsert_of_not_mem [DecidableEq α] {lt : α → α → Bool}
+    {parent x : α} {t : OrdTree α} (h : parent ∉ t) :
+    applyInsert lt parent x t = t := by
+  match t with
+  | .node a cs =>
+    have hne : a ≠ parent := fun heq => h (heq ▸ mem_root a cs)
+    simp only [applyInsert_node, if_neg hne]
+    congr 1
+    have key : ∀ c ∈ cs, applyInsert lt parent x c = c :=
+      fun c hc => applyInsert_of_not_mem (fun hp => h (mem_child hc hp))
+    suffices ∀ (l : List (OrdTree α)),
+        (∀ c ∈ l, applyInsert lt parent x c = c) →
+        l.map (applyInsert lt parent x) = l from this cs key
+    intro l hl
+    induction l with
+    | nil => rfl
+    | cons d rest ih =>
+      rw [List.map_cons, hl d (List.mem_cons_self ..)]
+      congr 1
+      exact ih (fun c hc => hl c (List.mem_cons_of_mem _ hc))
+termination_by t
+
+/-- `applyInsert` equals `insertLeaf` for some position ≤ numChildren. -/
+theorem applyInsert_eq_insertLeaf [DecidableEq α] (lt : α → α → Bool)
+    (parent x : α) (t : OrdTree α) (hd : t.Distinct) (hp : parent ∈ t) :
+    ∃ pos, pos ≤ numChildren parent t ∧
+      applyInsert lt parent x t = insertLeaf t parent x pos := by
+  match t with
+  | .node a cs =>
+    by_cases hap : a = parent
+    · subst hap
+      exact ⟨cs.countP (fun c => lt c.rootLabel x),
+        by simp [numChildren_node, List.countP_le_length],
+        by simp [applyInsert_node, insertLeaf_node]⟩
+    · -- Parent is in exactly one child
+      have hp' : ∃ c ∈ cs, parent ∈ c := by
+        rw [mem_node_iff] at hp
+        rcases hp with rfl | h
+        · exact absurd rfl hap
+        · exact h
+      obtain ⟨ci, hci, hpci⟩ := hp'
+      have hd_ci := distinct_of_child hd hci
+      obtain ⟨pos, hpos_le, hpos_eq⟩ :=
+        applyInsert_eq_insertLeaf lt parent x ci hd_ci hpci
+      refine ⟨pos, ?_, ?_⟩
+      · -- pos ≤ numChildren parent (node a cs)
+        simp only [numChildren_node, if_neg hap]
+        suffices h : numChildren parent ci ≤
+            cs.foldl (fun acc c => acc + numChildren parent c) 0 from
+          Nat.le_trans hpos_le h
+        suffices ∀ (l : List (OrdTree α)) (c : OrdTree α) (init : Nat),
+            c ∈ l → numChildren parent c ≤
+              l.foldl (fun acc c => acc + numChildren parent c) init from
+          this cs ci 0 hci
+        intro l; induction l with
+        | nil => intro c _ hc; simp at hc
+        | cons d rest ih =>
+          intro c init hc
+          simp only [List.foldl_cons]
+          rcases List.mem_cons.mp hc with rfl | hc'
+          · have : init + numChildren parent c ≤
+                rest.foldl (fun acc c => acc + numChildren parent c)
+                  (init + numChildren parent c) := by
+              suffices ∀ (l : List (OrdTree α)) (v : Nat),
+                  v ≤ l.foldl (fun acc c => acc + numChildren parent c) v from
+                this rest _
+              intro l; induction l with
+              | nil => intro v; exact Nat.le_refl _
+              | cons e l' ih' => intro v; simp only [List.foldl_cons]; exact Nat.le_trans (Nat.le_add_right ..) (ih' _)
+            omega
+          · exact ih c _ hc'
+      · -- Both maps agree
+        simp only [applyInsert_node, if_neg hap, insertLeaf_node, if_neg hap]
+        congr 1
+        have huniq : ∀ c' ∈ cs, c' ≠ ci → parent ∉ c' := by
+          intro c' hc' hne hpc'
+          exact hne (mem_unique_child hd hc' hci hpc' hpci)
+        suffices ∀ (l : List (OrdTree α)),
+            (∀ c ∈ l, c ≠ ci → parent ∉ c) →
+            l.map (applyInsert lt parent x) =
+              l.map (fun c => insertLeaf c parent x pos) from
+          this cs huniq
+        intro l; induction l with
+        | nil => intros; rfl
+        | cons d rest ih =>
+          intro huniq'
+          rw [List.map_cons, List.map_cons]
+          congr 1
+          · by_cases hd_eq : d = ci
+            · exact hd_eq ▸ hpos_eq
+            · rw [applyInsert_of_not_mem (huniq' d (List.mem_cons_self ..) hd_eq),
+                   insertLeaf_of_not_mem (huniq' d (List.mem_cons_self ..) hd_eq)]
+          · exact ih (fun c hc => huniq' c (List.mem_cons_of_mem _ hc))
+termination_by t
+
 end OrdTree
 
 end OTProof
