@@ -154,83 +154,70 @@ private theorem double_insertIdx_lt {l : List α} {a b : α}
     have hbc : b ≠ c := by intro h; exact hb (by simp [h])
     have hal : a ∉ l := fun h => ha (List.mem_cons_of_mem _ h)
     have hbl : b ∉ l := fun h => hb (List.mem_cons_of_mem _ h)
-    -- Normalize insertIdx on (c :: l) in heq
-    -- ka = 0 or succ; kb ≥ 1 since ka < kb and both ≤ (c :: l).length
-    cases hka_c : ka with
+    -- Case split on ka, kb (using plain `cases` for direct substitution)
+    cases ka with
     | zero =>
-      obtain ⟨kb_, rfl⟩ : ∃ kb_, kb = kb_ + 1 := ⟨kb - 1, by omega⟩
-      -- LHS: (c :: l.insertIdx kb_ b).insertIdx ka' a
-      -- RHS: (a :: c :: l).insertIdx kb' b
-      simp only [List.insertIdx_succ_cons, List.insertIdx_zero,
-                  List.length_cons, Nat.succ_le_succ_iff] at heq hkb hka' hkb' ⊢
-      -- Case split on ka'
-      cases hka'_c : ka' with
-      | zero =>
-        -- LHS: (c :: l.insertIdx kb_ b).insertIdx 0 a = a :: ...
-        rw [show (0 : Nat) = 0 from rfl, List.insertIdx_zero] at heq
-        -- Case split on kb'
-        cases hkb'_c : kb' with
+      cases kb with
+      | zero => omega
+      | succ kb =>
+        simp only [List.insertIdx_succ_cons, List.insertIdx_zero,
+                    List.length_cons, Nat.succ_le_succ_iff] at heq hkb hka' hkb' ⊢
+        cases ka' with
         | zero =>
-          rw [List.insertIdx_zero] at heq
-          exact absurd (List.cons.inj heq).1 hab
-        | succ kb'_ =>
-          rw [List.insertIdx_succ_cons] at heq
-          obtain ⟨_, h2⟩ := List.cons.inj heq
-          -- Need to show kb'_ + 1 = kb_ + 2
-          -- h2 : c :: l.insertIdx kb_ b = (c :: l).insertIdx kb'_ b
-          constructor
-          · rfl
-          · congr 1
-            -- Reduce (c :: l).insertIdx kb'_ b
-            cases hkb'_c2 : kb'_ with
+          simp only [List.insertIdx_zero] at heq
+          cases kb' with
+          | zero =>
+            simp only [List.insertIdx_zero] at heq
+            exact absurd (List.cons.inj heq).1 hab
+          | succ kb' =>
+            simp only [List.insertIdx_succ_cons] at heq
+            obtain ⟨_, h2⟩ := List.cons.inj heq
+            refine ⟨rfl, ?_⟩
+            cases kb' with
             | zero =>
               simp only [List.insertIdx_zero] at h2
               exact absurd (List.cons.inj h2).1.symm hbc
             | succ m =>
               simp only [List.insertIdx_succ_cons] at h2
-              exact insertIdx_pos_unique hbl (by omega) (by omega)
-                (List.cons.inj h2).2
-      | succ ka'_ =>
-        -- LHS becomes c :: (l.insertIdx kb_ b).insertIdx ka'_ a
-        simp only [List.insertIdx_succ_cons] at heq
-        -- First element c vs a on RHS
-        cases hkb'_c : kb' with
+              have := insertIdx_pos_unique hbl hkb (by omega) (List.cons.inj h2).2
+              omega
+        | succ ka' =>
+          simp only [List.insertIdx_succ_cons] at heq
+          cases kb' with
+          | zero =>
+            simp only [List.insertIdx_zero] at heq
+            exact absurd (List.cons.inj heq).1 hbc.symm
+          | succ kb' =>
+            simp only [List.insertIdx_succ_cons] at heq
+            exact absurd (List.cons.inj heq).1 hac.symm
+    | succ ka =>
+      cases kb with
+      | zero => omega
+      | succ kb =>
+        simp only [List.insertIdx_succ_cons, List.length_cons,
+                    Nat.succ_le_succ_iff] at heq hka hkb hka' hkb' hlt ⊢
+        cases ka' with
         | zero =>
           simp only [List.insertIdx_zero] at heq
-          exact absurd (List.cons.inj heq).1 hbc.symm
-        | succ kb'_ =>
+          cases kb' with
+          | zero =>
+            simp only [List.insertIdx_zero] at heq
+            exact absurd (List.cons.inj heq).1 hab
+          | succ kb' =>
+            simp only [List.insertIdx_succ_cons] at heq
+            exact absurd (List.cons.inj heq).1 hac
+        | succ ka' =>
           simp only [List.insertIdx_succ_cons] at heq
-          -- c :: _ = a :: _, so c = a, contradiction
-          exact absurd (List.cons.inj heq).1 hac.symm
-    | succ ka_ =>
-      obtain ⟨kb_, rfl⟩ : ∃ kb_, kb = kb_ + 1 := ⟨kb - 1, by omega⟩
-      -- Both sides start with c :: ...
-      simp only [List.insertIdx_succ_cons, List.length_cons,
-                  Nat.succ_le_succ_iff] at heq hka hkb hka' hkb' ⊢
-      cases hka'_c : ka' with
-      | zero =>
-        -- LHS: a :: c :: l.insertIdx kb_ b
-        simp only [List.insertIdx_zero] at heq
-        cases hkb'_c : kb' with
-        | zero =>
-          simp only [List.insertIdx_zero] at heq
-          exact absurd (List.cons.inj heq).1 hab.symm
-        | succ kb'_ =>
-          simp only [List.insertIdx_succ_cons] at heq
-          exact absurd (List.cons.inj heq).1 hac
-      | succ ka'_ =>
-        -- LHS: c :: (l.insertIdx kb_ b).insertIdx ka'_ a
-        simp only [List.insertIdx_succ_cons] at heq
-        cases hkb'_c : kb' with
-        | zero =>
-          simp only [List.insertIdx_zero] at heq
-          exact absurd (List.cons.inj heq).1 hbc
-        | succ kb'_ =>
-          simp only [List.insertIdx_succ_cons] at heq
-          obtain ⟨_, htail⟩ := List.cons.inj heq
-          have ⟨h1, h2⟩ := ih hal hbl hab (by omega) (by omega)
-            (by omega) (by omega) htail (by omega)
-          exact ⟨congr_arg Nat.succ h1, congr_arg Nat.succ h2⟩
+          cases kb' with
+          | zero =>
+            simp only [List.insertIdx_zero] at heq
+            exact absurd (List.cons.inj heq).1 (Ne.symm hbc)
+          | succ kb' =>
+            simp only [List.insertIdx_succ_cons] at heq
+            obtain ⟨_, htail⟩ := List.cons.inj heq
+            have ⟨h1, h2⟩ := ih hal hbl (by omega) (by omega)
+              (by omega) (by omega) htail (by omega)
+            exact ⟨congr_arg Nat.succ h1, congr_arg Nat.succ h2⟩
 
 /-- Symmetric version for `kb < ka`. -/
 private theorem double_insertIdx_gt {l : List α} {a b : α}
@@ -247,6 +234,139 @@ private theorem double_insertIdx_gt {l : List α} {a b : α}
   have heq' := heq.symm
   have ⟨h1, h2⟩ := double_insertIdx_lt hb ha hab.symm hkb hka hkb' hka' heq' hgt
   exact ⟨h2, h1⟩
+
+/-- When `ka = kb`, the double-insertion equation has exactly two solutions. -/
+private theorem double_insertIdx_eq {l : List α} {a b : α}
+    {ka ka' kb' : Nat}
+    (ha : a ∉ l) (hb : b ∉ l) (hab : a ≠ b)
+    (hka : ka ≤ l.length)
+    (hka' : ka' ≤ (l.insertIdx ka b).length)
+    (hkb' : kb' ≤ (l.insertIdx ka a).length)
+    (heq : (l.insertIdx ka b).insertIdx ka' a =
+           (l.insertIdx ka a).insertIdx kb' b) :
+    (ka' = ka ∧ kb' = ka + 1) ∨ (ka' = ka + 1 ∧ kb' = ka) := by
+  induction l generalizing ka ka' kb' with
+  | nil =>
+    simp at hka; subst hka
+    simp only [List.insertIdx_zero, List.length_singleton] at hka' hkb' heq
+    -- ka' ≤ 1 and kb' ≤ 1, so 4 cases
+    cases ka' with
+    | zero =>
+      cases kb' with
+      | zero =>
+        simp only [List.insertIdx_zero] at heq
+        exact absurd (List.cons.inj heq).1 hab
+      | succ n =>
+        have : n = 0 := by omega
+        subst this
+        exact .inl ⟨rfl, rfl⟩
+    | succ n =>
+      have : n = 0 := by omega
+      subst this
+      cases kb' with
+      | zero => exact .inr ⟨rfl, rfl⟩
+      | succ m =>
+        have : m = 0 := by omega
+        subst this
+        simp only [List.insertIdx_zero, List.insertIdx_succ_cons] at heq
+        exact absurd (List.cons.inj heq).1 hab.symm
+  | cons c l ih =>
+    have hac : a ≠ c := fun h => ha (h ▸ List.mem_cons_self ..)
+    have hbc : b ≠ c := fun h => hb (h ▸ List.mem_cons_self ..)
+    have hal : a ∉ l := fun h => ha (List.mem_cons_of_mem _ h)
+    have hbl : b ∉ l := fun h => hb (List.mem_cons_of_mem _ h)
+    cases ka with
+    | zero =>
+      simp only [List.insertIdx_zero, List.length_cons] at heq hka' hkb' ⊢
+      cases ka' with
+      | zero =>
+        simp only [List.insertIdx_zero] at heq
+        cases kb' with
+        | zero =>
+          simp only [List.insertIdx_zero] at heq
+          exact absurd (List.cons.inj heq).1 hab
+        | succ kb' =>
+          simp only [List.insertIdx_succ_cons] at heq
+          obtain ⟨_, h2⟩ := List.cons.inj heq
+          left; refine ⟨rfl, ?_⟩
+          cases kb' with
+          | zero => simp only [List.insertIdx_zero] at h2; rfl
+          | succ m =>
+            simp only [List.insertIdx_succ_cons] at h2
+            exact absurd (List.cons.inj h2).1 hbc
+      | succ ka' =>
+        simp only [List.insertIdx_succ_cons] at heq
+        cases kb' with
+        | zero =>
+          simp only [List.insertIdx_zero] at heq
+          obtain ⟨_, h2⟩ := List.cons.inj heq
+          right; refine ⟨?_, rfl⟩
+          cases ka' with
+          | zero => simp only [List.insertIdx_zero] at h2; rfl
+          | succ m =>
+            simp only [List.insertIdx_succ_cons] at h2
+            exact absurd (List.cons.inj h2).1.symm hac
+        | succ kb' =>
+          simp only [List.insertIdx_succ_cons] at heq
+          exact absurd (List.cons.inj heq).1.symm hab
+    | succ ka =>
+      simp only [List.insertIdx_succ_cons, List.length_cons,
+                  Nat.succ_le_succ_iff] at heq hka hka' hkb' ⊢
+      cases ka' with
+      | zero =>
+        simp only [List.insertIdx_zero] at heq
+        cases kb' with
+        | zero =>
+          simp only [List.insertIdx_zero] at heq
+          exact absurd (List.cons.inj heq).1 hab
+        | succ kb' =>
+          simp only [List.insertIdx_succ_cons] at heq
+          exact absurd (List.cons.inj heq).1 hac
+      | succ ka' =>
+        simp only [List.insertIdx_succ_cons] at heq
+        cases kb' with
+        | zero =>
+          simp only [List.insertIdx_zero] at heq
+          exact absurd (List.cons.inj heq).1 (Ne.symm hbc)
+        | succ kb' =>
+          simp only [List.insertIdx_succ_cons] at heq
+          obtain ⟨_, htail⟩ := List.cons.inj heq
+          rcases ih hal hbl (by omega) (by omega) (by omega) htail with
+            ⟨h1, h2⟩ | ⟨h1, h2⟩
+          · exact .inl ⟨congr_arg Nat.succ h1, congr_arg Nat.succ h2⟩
+          · exact .inr ⟨congr_arg Nat.succ h1, congr_arg Nat.succ h2⟩
+
+/-- Inserting b at k then a at k+1 gives PrecedesIn b a. -/
+private theorem precedesIn_insertIdx_succ {l : List α} {a b : α} {k : Nat}
+    (hk : k ≤ l.length) :
+    PrecedesIn b a ((l.insertIdx k b).insertIdx (k + 1) a) := by
+  induction l generalizing k with
+  | nil =>
+    simp at hk; subst hk
+    exact ⟨[], [], [], by simp [List.insertIdx_zero, List.insertIdx_succ_cons]⟩
+  | cons c l ih =>
+    cases k with
+    | zero =>
+      exact ⟨[], [], c :: l, by simp [List.insertIdx_zero, List.insertIdx_succ_cons]⟩
+    | succ k =>
+      simp only [List.insertIdx_succ_cons]
+      exact (ih (by simp only [List.length_cons] at hk; omega)).cons c
+
+/-- Inserting b at k then a at k gives PrecedesIn a b. -/
+private theorem precedesIn_insertIdx_self {l : List α} {a b : α} {k : Nat}
+    (hk : k ≤ l.length) :
+    PrecedesIn a b ((l.insertIdx k b).insertIdx k a) := by
+  induction l generalizing k with
+  | nil =>
+    simp at hk; subst hk
+    exact ⟨[], [], [], by simp [List.insertIdx_zero]⟩
+  | cons c l ih =>
+    cases k with
+    | zero =>
+      exact ⟨[], [], c :: l, by simp [List.insertIdx_zero]⟩
+    | succ k =>
+      simp only [List.insertIdx_succ_cons]
+      exact (ih (by simp only [List.length_cons] at hk; omega)).cons c
 
 /-! ## LE-2: Main theorem — rebase preserves Log Effect Invariant -/
 
@@ -274,11 +394,17 @@ theorem rebase_preserves_logEffect [DecidableEq α]
       (applyInsert lt_sib parent_b b t).toList =
         t.toList.insertIdx kb b ∧
       lo_b.idx = kb - 1)
-    -- Tiebreaker consistency: tb matches lt_sib when indices coincide
+    -- lt_sib properties (needed for applyInsert_comm)
+    (hlt_trans : ∀ x y z, lt_sib x y = true → lt_sib y z = true → lt_sib x z = true)
+    (hlt_total_ab : lt_sib a b = true ∨ lt_sib b a = true)
+    (hlt_asym_ab : lt_sib a b = true → lt_sib b a = false)
+    -- Tiebreaker consistency: when indices coincide, DFS ordering is determined
     (htb_lo : lo_a.idx = lo_b.idx → tb = .loPrecedes →
-      lt_sib a b = true)
+      PrecedesIn a b (applyInsert lt_sib parent_a a
+        (applyInsert lt_sib parent_b b t)).toList)
     (htb_x : lo_a.idx = lo_b.idx → tb = .xPrecedes →
-      lt_sib b a = true) :
+      PrecedesIn b a (applyInsert lt_sib parent_a a
+        (applyInsert lt_sib parent_b b t)).toList) :
     let t_b := applyInsert lt_sib parent_b b t
     let t_ab := applyInsert lt_sib parent_a a t_b
     let doc_b := doc.insertIdx lo_b.idx lo_b.char
@@ -361,77 +487,98 @@ theorem rebase_preserves_logEffect [DecidableEq α]
     simp only [Nat.add_sub_cancel]
     exact (tail_insertIdx_succ htb_ne).symm
   -- CORE: prove rebased.idx = ka' - 1
-  -- Strategy: Use rebase_correct on the TAIL lists (t.toList.tail) with
-  -- indices lo_a.idx = ka-1 and lo_b.idx = kb-1. The theorem gives us
-  -- that some target list equals (tail.insertIdx (kb-1) b).insertIdx rebased.idx a.
-  -- Separately, t_ab.toList.tail = (tail.insertIdx (kb-1) b).insertIdx (ka'-1) a.
-  -- By injectivity of insertIdx on Nodup lists, rebased.idx = ka'-1.
-  --
-  -- To apply rebase_correct, we need the "other perspective":
-  -- what t_ab.toList looks like from inserting a first then b.
-  -- This uses insertIdx_comm at the list level.
-  --
-  -- Actually, the simplest approach: show the lists are equal and use
-  -- the Nodup property + insertIdx position uniqueness.
-
-  -- Step 1: t_ab.toList = (t.toList.insertIdx kb b).insertIdx ka' a (have this)
-  -- Step 2: By insertIdx_comm, we can relate this to (t.toList.insertIdx ka a).insertIdx kb' b
-  -- Step 3: The relationship constrains ka' based on ka, kb
-  -- Step 4: Then rebased.idx = ka' - 1 by arithmetic
-
-  -- Position uniqueness lemma (inline)
-  -- If l.insertIdx i x = l.insertIdx j x, i ≤ l.length, j ≤ l.length, x ∉ l
-  -- then i = j
-  -- Proof: take/drop decomposition; both sides have x at unique position
-
-  -- Actually, let's go direct. We case-split on ka vs kb.
+  -- Way B: use applyInsert_comm to get alternate DFS decomposition
+  have hcomm := applyInsert_comm lt_sib hd ha_fresh hb_fresh hab hpa hpb
+      hlt_trans hlt_total_ab hlt_asym_ab
+  -- Properties of t_a = applyInsert lt_sib parent_a a t
+  have hd_a : (applyInsert lt_sib parent_a a t).Distinct := by
+    obtain ⟨pos, hle, heq⟩ := applyInsert_eq_insertLeaf lt_sib parent_a a t hd hpa
+    rw [heq]; exact distinct_insertLeaf hd ha_fresh hpa hle
+  have hb_ta : b ∉ applyInsert lt_sib parent_a a t := by
+    obtain ⟨pos, _, heq⟩ := applyInsert_eq_insertLeaf lt_sib parent_a a t hd hpa
+    rw [heq]; exact not_mem_insertLeaf_fresh hb_fresh hab.symm
+  have hpb_ta : parent_b ∈ applyInsert lt_sib parent_a a t := by
+    obtain ⟨pos, _, heq⟩ := applyInsert_eq_insertLeaf lt_sib parent_a a t hd hpa
+    rw [heq]; exact mem_insertLeaf hpb
+  obtain ⟨_, hpos_b''_le, hpos_b''_eq⟩ :=
+    applyInsert_eq_insertLeaf lt_sib parent_b b
+      (applyInsert lt_sib parent_a a t) hd_a hpb_ta
+  obtain ⟨kb', hkb'_le, hkb'_list⟩ :=
+    toList_insertLeaf hd_a hpb_ta hb_ta hpos_b''_le
+  -- Way A: t_ab.toList via inserting b first then a
+  have htab_wayA : t_ab.toList = (t.toList.insertIdx kb b).insertIdx ka' a := by
+    rw [htab_list, htb_list]
+  -- Way B: t_ab.toList via inserting a first then b (using commutativity)
+  have htab_wayB : t_ab.toList = (t.toList.insertIdx ka a).insertIdx kb' b := by
+    show (applyInsert lt_sib parent_a a (applyInsert lt_sib parent_b b t)).toList = _
+    rw [hcomm, hpos_b''_eq, hkb'_list, hka_list]
+  -- Double insertion equation: equate Way A and Way B
+  have heq_double : (t.toList.insertIdx kb b).insertIdx ka' a =
+      (t.toList.insertIdx ka a).insertIdx kb' b :=
+    htab_wayA.symm.trans htab_wayB
+  -- Bounds for double_insertIdx lemmas
+  have hka'_bound : ka' ≤ (t.toList.insertIdx kb b).length := by
+    rw [← htb_list]; exact hka'_le
+  have hkb'_bound : kb' ≤ (t.toList.insertIdx ka a).length := by
+    rw [← hka_list]; exact hkb'_le
+  -- Distinct for t_ab (needed for PrecedesIn antisymmetry in equal case)
+  have hd_ab : t_ab.Distinct := by
+    show (applyInsert lt_sib parent_a a t_b).Distinct
+    rw [hpos_a'_eq]; exact distinct_insertLeaf hd_b ha_tb hpa_tb hpos_a'_le
+  -- Now case-split on ka vs kb to determine ka'
   unfold rebaseForward
   simp only [hka_idx, hkb_idx]
-  -- Goal: (if ka-1 < kb-1 then lo_a else if kb-1 < ka-1 then ...).idx = ka' - 1
   by_cases h1 : ka - 1 < kb - 1
-  · -- ka < kb case
+  · -- ka < kb → ka' = ka
     simp [h1]
-    -- Need: lo_a.idx = ka' - 1, i.e., ka - 1 = ka' - 1, i.e., ka' = ka
-    -- By insertIdx_comm with i=ka, j=kb: since ka ≤ kb-1 < kb... wait
-    -- Actually ka < kb (from h1 since ka-1 < kb-1 and both ≥ 1)
-    have hkakb : ka < kb := by omega
-    -- insertIdx_comm: ka ≤ kb and kb ≤ |l| gives
-    -- (l.insertIdx ka a).insertIdx (kb+1) b = (l.insertIdx kb b).insertIdx ka a
-    -- The LHS is some list; the RHS has a inserted at position ka.
-    -- We know t_ab.toList = (t.toList.insertIdx kb b).insertIdx ka' a
-    -- We want to show ka' = ka
-    -- From insertIdx_comm: (l.insertIdx kb b).insertIdx ka a
-    --   = (l.insertIdx ka a).insertIdx (kb+1) b ... hmm wrong direction
-    -- Actually: i ≤ j → (l.insertIdx i a).insertIdx (j+1) b = (l.insertIdx j b).insertIdx i a
-    -- With i=ka, j=kb: ka ≤ kb → ... but we have ka < kb so ka ≤ kb ✓
-    -- (l.insertIdx ka a).insertIdx (kb+1) b = (l.insertIdx kb b).insertIdx ka a
-    -- So (l.insertIdx kb b).insertIdx ka a = (l.insertIdx ka a).insertIdx (kb+1) b
-    -- And we need: t_ab.toList = (l.insertIdx kb b).insertIdx ka' a
-    -- If t_ab also equals (l.insertIdx ka a).insertIdx (kb+1) b (from the other order)
-    -- then ka' = ka. But we don't know this from the other order...
-    --
-    -- Alternative: prove ka' = ka directly from the tree structure
-    -- When ka < kb: in the DFS list, a's insertion point is before b's.
-    -- After inserting b at position kb, positions < kb are unchanged.
-    -- So a still goes at position ka. Hence ka' = ka.
-    -- This is NOT from insertIdx_comm but from the tree structure.
-    sorry
+    have ⟨hka'_val, _⟩ := double_insertIdx_lt ha_fresh hb_fresh hab
+        hka_le hkb_le hka'_bound hkb'_bound heq_double (by omega)
+    omega
   · by_cases h2 : kb - 1 < ka - 1
-    · -- kb < ka case
+    · -- kb < ka → ka' = ka + 1
       simp [h1, h2]
-      -- Need: lo_a.idx + 1 = ka' - 1, i.e., ka = ka' - 1, i.e., ka' = ka + 1
-      sorry
-    · -- ka = kb case
+      have ⟨hka'_val, _⟩ := double_insertIdx_gt ha_fresh hb_fresh hab
+          hka_le hkb_le hka'_bound hkb'_bound heq_double (by omega)
+      omega
+    · -- ka = kb → use tiebreaker
       have hkakb : ka = kb := by omega
       simp [h1, h2]
+      -- Rewrite heq_double for equal positions
+      have heq_eq : (t.toList.insertIdx ka b).insertIdx ka' a =
+          (t.toList.insertIdx ka a).insertIdx kb' b := by
+        have h := heq_double; rw [hkakb.symm] at h; exact h
+      have hka'_bound' : ka' ≤ (t.toList.insertIdx ka b).length := by
+        rw [hkakb]; exact hka'_bound
       cases tb with
       | loPrecedes =>
         simp
-        -- Need: lo_a.idx = ka' - 1, i.e., ka - 1 = ka' - 1, i.e., ka' = ka
-        sorry
+        -- double_insertIdx_eq: ka' = ka ∨ ka' = ka + 1
+        rcases double_insertIdx_eq ha_fresh hb_fresh hab hka_le
+            hka'_bound' hkb'_bound heq_eq with
+          ⟨hka'_val, _⟩ | ⟨hka'_val, _⟩
+        · omega  -- ka' = ka ✓
+        · -- ka' = ka + 1 contradicts PrecedesIn from htb_lo
+          exfalso
+          have htab_form : t_ab.toList =
+              (t.toList.insertIdx ka b).insertIdx (ka + 1) a := by
+            rw [htab_wayA, hkakb.symm, hka'_val]
+          have h_prec_ba : PrecedesIn b a t_ab.toList := by
+            rw [htab_form]; exact precedesIn_insertIdx_succ hka_le
+          exact precedesIn_antisymm hd_ab (htb_lo (by omega) rfl) h_prec_ba
       | xPrecedes =>
         simp
-        -- Need: lo_a.idx + 1 = ka' - 1, i.e., ka = ka' - 1, i.e., ka' = ka + 1
-        sorry
+        -- double_insertIdx_eq: ka' = ka ∨ ka' = ka + 1
+        rcases double_insertIdx_eq ha_fresh hb_fresh hab hka_le
+            hka'_bound' hkb'_bound heq_eq with
+          ⟨hka'_val, _⟩ | ⟨hka'_val, _⟩
+        · -- ka' = ka contradicts PrecedesIn from htb_x
+          exfalso
+          have htab_form : t_ab.toList =
+              (t.toList.insertIdx ka b).insertIdx ka a := by
+            rw [htab_wayA, hkakb.symm, hka'_val]
+          have h_prec_ab : PrecedesIn a b t_ab.toList := by
+            rw [htab_form]; exact precedesIn_insertIdx_self hka_le
+          exact precedesIn_antisymm hd_ab h_prec_ab (htb_x (by omega) rfl)
+        · omega  -- ka' = ka + 1 ✓
 
 end OTProof
