@@ -5,9 +5,9 @@ PrecedesIn preservation under insertIdx, dfsLt preservation,
 and lcaLt stability — proving that existing ordering relationships
 are undisturbed when a fresh leaf is added.
 -/
-import OTProof.InsertLeaf
-import OTProof.Characterization
-import OTProof.Consequences
+import OTProof.Sequence.InsertLeaf
+import OTProof.OrderedTree.Characterization
+import OTProof.OrderedTree.TotalOrder
 
 namespace OTProof
 

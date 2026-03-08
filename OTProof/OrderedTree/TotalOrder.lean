@@ -6,7 +6,7 @@
 
 Following §4 of dfs-preorder-lca-characterization-v0.1.md.
 -/
-import OTProof.Characterization
+import OTProof.OrderedTree.Characterization
 
 namespace OTProof
 

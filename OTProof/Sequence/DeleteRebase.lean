@@ -14,10 +14,10 @@ This file builds the filter/projection layer on top of the existing
 insert-only infrastructure, then proves rebase correctness for all
 operation pairs.
 -/
-import OTProof.LogEffect
-import OTProof.InsertLeaf
-import OTProof.Stability
-import OTProof.Consequences
+import OTProof.Sequence.LogEffect
+import OTProof.Sequence.InsertLeaf
+import OTProof.Sequence.Stability
+import OTProof.OrderedTree.TotalOrder
 import Mathlib.Data.Finset.Basic
 
 namespace OTProof

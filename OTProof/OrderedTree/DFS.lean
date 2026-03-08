@@ -9,7 +9,7 @@ DFS preorder traversal and its key properties:
 
 Following §2 of dfs-preorder-lca-characterization-v0.1.md.
 -/
-import OTProof.OrdTree
+import OTProof.OrderedTree.Basic
 
 namespace OTProof
 

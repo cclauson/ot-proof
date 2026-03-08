@@ -5,7 +5,7 @@ Defines `insertLeaf` (insert a new leaf as a child of a given parent)
 and proves that DFS of the modified tree equals the old DFS with the
 new element `insertIdx`'d at a specific position.
 -/
-import OTProof.DFS
+import OTProof.OrderedTree.DFS
 import Mathlib.Data.List.InsertIdx
 
 namespace OTProof

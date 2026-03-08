@@ -5,7 +5,7 @@ Theorem 3.1: dfsLt x y t ↔ lcaLt x y t
 
 Following §3 of dfs-preorder-lca-characterization-v0.1.md.
 -/
-import OTProof.DFS
+import OTProof.OrderedTree.DFS
 
 namespace OTProof
 

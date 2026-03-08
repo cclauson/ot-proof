@@ -1,8 +1,9 @@
-import OTProof.OrdTree
-import OTProof.DFS
-import OTProof.Characterization
-import OTProof.Consequences
-import OTProof.Rebase
-import OTProof.InsertLeaf
-import OTProof.Stability
-import OTProof.LogEffect
+import OTProof.OrderedTree.Basic
+import OTProof.OrderedTree.DFS
+import OTProof.OrderedTree.Characterization
+import OTProof.OrderedTree.TotalOrder
+import OTProof.Sequence.InsertLeaf
+import OTProof.Sequence.Stability
+import OTProof.Sequence.Rebase
+import OTProof.Sequence.LogEffect
+import OTProof.Sequence.DeleteRebase

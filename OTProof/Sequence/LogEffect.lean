@@ -4,8 +4,8 @@
 Defines the Log Effect Invariant (materialized document = DFS-ordered
 elements) and proves it is preserved by rebase.
 -/
-import OTProof.Stability
-import OTProof.Rebase
+import OTProof.Sequence.Stability
+import OTProof.Sequence.Rebase
 
 namespace OTProof
 
